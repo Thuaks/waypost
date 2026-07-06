@@ -2,9 +2,17 @@ import express from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { targets } from "./targets.js";
 import { startMockServices } from "./mockServices.js";
+import { recordRequest, getRecentLogs, getOverallStats, getStatsForTarget } from "./metrics.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Stamp every request with a start time so we can compute real latency
+// once the response comes back from the target.
+app.use((req, res, next) => {
+  req._startTime = Date.now();
+  next();
+});
 
 // --- Phase 1: Path-based routing ---
 // Each entry in targets.js maps a path prefix to a backend target.
@@ -20,7 +28,25 @@ targets.forEach(({ pathPrefix, url, name }) => {
         proxyReq: (proxyReq, req) => {
           console.log(`[waypost] ${req.method} ${req.originalUrl} -> ${name} (${url})`);
         },
+        proxyRes: (proxyRes, req) => {
+          const latencyMs = Date.now() - req._startTime;
+          recordRequest({
+            method: req.method,
+            path: req.originalUrl,
+            targetName: name,
+            status: proxyRes.statusCode,
+            latencyMs,
+          });
+        },
         error: (err, req, res) => {
+          const latencyMs = Date.now() - (req._startTime || Date.now());
+          recordRequest({
+            method: req.method,
+            path: req.originalUrl,
+            targetName: name,
+            status: 502,
+            latencyMs,
+          });
           console.error(`[waypost] error forwarding to ${name}:`, err.message);
           res.status(502).json({ error: "Bad Gateway", target: name });
         },
@@ -29,13 +55,28 @@ targets.forEach(({ pathPrefix, url, name }) => {
   );
 });
 
-// --- Introspection endpoints (the future dashboard will call these) ---
+// --- Introspection endpoints the dashboard polls ---
 app.get("/health", (req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
 app.get("/api/targets", (req, res) => {
-  res.json(targets.map(({ name, pathPrefix, url }) => ({ name, pathPrefix, url })));
+  res.json(
+    targets.map(({ name, pathPrefix, url }) => ({
+      name,
+      pathPrefix,
+      url,
+      ...getStatsForTarget(name),
+    }))
+  );
+});
+
+app.get("/api/stats", (req, res) => {
+  res.json(getOverallStats());
+});
+
+app.get("/api/logs", (req, res) => {
+  res.json(getRecentLogs(10));
 });
 
 app.listen(PORT, () => {

@@ -89,6 +89,22 @@
 .main__subtitle {
   color: var(--text-secondary);
   margin: var(--space-1) 0 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.conn-indicator {
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+
+.conn-indicator--live {
+  color: var(--status-healthy);
+}
+
+.conn-indicator--offline {
+  color: var(--text-tertiary);
 }
 
 /* --- Stat grid --- */
