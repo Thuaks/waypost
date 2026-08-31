@@ -3,6 +3,7 @@ import StatCard from "./components/StatCard.jsx";
 import TargetsTable from "./components/TargetsTable.jsx";
 import TrafficChart from "./components/TrafficChart.jsx";
 import RequestLog from "./components/RequestLog.jsx";
+import AddTargetForm from "./components/AddTargetForm.jsx";
 import { placeholderStats, placeholderTargets, placeholderLog, placeholderTraffic } from "./data/placeholder.js";
 import "./App.css";
 
@@ -17,39 +18,53 @@ export default function App() {
   const [log, setLog] = useState(placeholderLog);
   const [connected, setConnected] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchLiveData() {
-      try {
-        const [statsRes, targetsRes, logRes] = await Promise.all([
-          fetch("/api/stats"),
-          fetch("/api/targets"),
-          fetch("/api/logs"),
-        ]);
-        const [statsData, targetsData, logData] = await Promise.all([
-          statsRes.json(),
-          targetsRes.json(),
-          logRes.json(),
-        ]);
-        if (!cancelled) {
-          setStats(statsData);
-          setTargets(targetsData);
-          setLog(logData);
-          setConnected(true);
-        }
-      } catch (err) {
-        if (!cancelled) setConnected(false);
-        console.error("[waypost dashboard] failed to fetch live data:", err);
-      }
+  async function fetchLiveData() {
+    try {
+      const [statsRes, targetsRes, logRes] = await Promise.all([
+        fetch("/api/stats"),
+        fetch("/api/targets"),
+        fetch("/api/logs"),
+      ]);
+      const [statsData, targetsData, logData] = await Promise.all([
+        statsRes.json(),
+        targetsRes.json(),
+        logRes.json(),
+      ]);
+      setStats(statsData);
+      setTargets(targetsData);
+      setLog(logData);
+      setConnected(true);
+    } catch (err) {
+      setConnected(false);
+      console.error("[waypost dashboard] failed to fetch live data:", err);
     }
+  }
 
+  async function handleAddTarget({ name, pathPrefix, url }) {
+    const res = await fetch("/api/targets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, pathPrefix, url }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to add target");
+    await fetchLiveData();
+  }
+
+  async function handleRemoveTarget(name) {
+    const res = await fetch(`/api/targets/${encodeURIComponent(name)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json();
+      console.error("[waypost dashboard] failed to remove target:", data.error);
+      return;
+    }
+    await fetchLiveData();
+  }
+
+  useEffect(() => {
     fetchLiveData();
     const interval = setInterval(fetchLiveData, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -87,7 +102,13 @@ export default function App() {
 
         <section className="content-grid">
           <TrafficChart data={placeholderTraffic} />
-          <TargetsTable targets={targets} />
+          <div className="stack">
+            <div className="panel">
+              <h2 className="panel__title">Add a Target</h2>
+              <AddTargetForm onAdd={handleAddTarget} />
+            </div>
+            <TargetsTable targets={targets} onRemove={handleRemoveTarget} />
+          </div>
         </section>
 
         <section>

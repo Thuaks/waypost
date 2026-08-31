@@ -4,7 +4,7 @@ const statusColor = {
   error: "var(--status-error)",
 };
 
-export default function TargetsTable({ targets }) {
+export default function TargetsTable({ targets, onRemove }) {
   return (
     <div className="panel">
       <h2 className="panel__title">Registered Targets</h2>
@@ -15,6 +15,7 @@ export default function TargetsTable({ targets }) {
             <th>Path</th>
             <th>Status</th>
             <th className="numeric">Latency</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -27,6 +28,11 @@ export default function TargetsTable({ targets }) {
                 {t.status}
               </td>
               <td className="numeric">{t.latencyMs} ms</td>
+              <td>
+                <button className="btn-remove" onClick={() => onRemove(t.name)} title={`Remove ${t.name}`}>
+                  Remove
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "users-service",
+    "pathPrefix": "/api/users",
+    "url": "http://localhost:4001"
+  },
+  {
+    "name": "orders-service",
+    "pathPrefix": "/api/orders",
+    "url": "http://localhost:4002"
+  }
+]

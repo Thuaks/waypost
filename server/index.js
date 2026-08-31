@@ -1,10 +1,11 @@
 import express from "express";
-import { createProxyMiddleware } from "http-proxy-middleware";
-import { targets } from "./targets.js";
+import { dynamicProxyMiddleware } from "./proxyRouter.js";
+import { getTargets, addTarget, removeTarget } from "./targetsStore.js";
 import { startMockServices } from "./mockServices.js";
 import { recordRequest, getRecentLogs, getOverallStats, getStatsForTarget } from "./metrics.js";
 
 const app = express();
+app.use(express.json());
 const PORT = process.env.PORT || 4000;
 
 // Stamp every request with a start time so we can compute real latency
@@ -14,61 +15,49 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Phase 1: Path-based routing ---
-// Each entry in targets.js maps a path prefix to a backend target.
-// The gateway inspects the request path and forwards it to the matching target.
-targets.forEach(({ pathPrefix, url, name }) => {
-  app.use(
-    pathPrefix,
-    createProxyMiddleware({
-      target: url,
-      changeOrigin: true,
-      pathRewrite: { [`^${pathPrefix}`]: "" },
-      on: {
-        proxyReq: (proxyReq, req) => {
-          console.log(`[waypost] ${req.method} ${req.originalUrl} -> ${name} (${url})`);
-        },
-        proxyRes: (proxyRes, req) => {
-          const latencyMs = Date.now() - req._startTime;
-          recordRequest({
-            method: req.method,
-            path: req.originalUrl,
-            targetName: name,
-            status: proxyRes.statusCode,
-            latencyMs,
-          });
-        },
-        error: (err, req, res) => {
-          const latencyMs = Date.now() - (req._startTime || Date.now());
-          recordRequest({
-            method: req.method,
-            path: req.originalUrl,
-            targetName: name,
-            status: 502,
-            latencyMs,
-          });
-          console.error(`[waypost] error forwarding to ${name}:`, err.message);
-          res.status(502).json({ error: "Bad Gateway", target: name });
-        },
-      },
-    })
-  );
-});
+// --- Management endpoints ---
+// These are registered BEFORE the dynamic proxy catch-all further down,
+// so exact matches like /api/targets are handled here rather than being
+// mistaken for a proxied route.
 
-// --- Introspection endpoints the dashboard polls ---
 app.get("/health", (req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
 app.get("/api/targets", (req, res) => {
   res.json(
-    targets.map(({ name, pathPrefix, url }) => ({
+    getTargets().map(({ name, pathPrefix, url }) => ({
       name,
       pathPrefix,
       url,
       ...getStatsForTarget(name),
     }))
   );
+});
+
+app.post("/api/targets", (req, res) => {
+  const { name, pathPrefix, url } = req.body || {};
+  if (!name || !pathPrefix || !url) {
+    return res.status(400).json({ error: "name, pathPrefix, and url are all required" });
+  }
+  if (!pathPrefix.startsWith("/")) {
+    return res.status(400).json({ error: "pathPrefix must start with /" });
+  }
+  try {
+    const updated = addTarget({ name, pathPrefix, url });
+    res.status(201).json(updated);
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
+app.delete("/api/targets/:name", (req, res) => {
+  try {
+    const updated = removeTarget(req.params.name);
+    res.json(updated);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
 });
 
 app.get("/api/stats", (req, res) => {
@@ -79,10 +68,15 @@ app.get("/api/logs", (req, res) => {
   res.json(getRecentLogs(10));
 });
 
+// --- Dynamic proxy ---
+// Handles everything else by checking the current target list on every
+// request, so add/remove takes effect immediately without a restart.
+app.use(dynamicProxyMiddleware);
+
 app.listen(PORT, () => {
   console.log(`\nWaypost gateway running on http://localhost:${PORT}`);
   console.log("Registered routes:");
-  targets.forEach((t) => console.log(`  ${t.pathPrefix} -> ${t.name} (${t.url})`));
+  getTargets().forEach((t) => console.log(`  ${t.pathPrefix} -> ${t.name} (${t.url})`));
   console.log("");
 });
 
