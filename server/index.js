@@ -2,7 +2,7 @@ import express from "express";
 import { dynamicProxyMiddleware } from "./proxyRouter.js";
 import { getTargets, addTarget, removeTarget } from "./targetsStore.js";
 import { startMockServices } from "./mockServices.js";
-import { recordRequest, getRecentLogs, getOverallStats, getStatsForTarget } from "./metrics.js";
+import { recordRequest, getRecentLogs, getOverallStats, getStatsForTarget, getTrafficSeries } from "./metrics.js";
 
 const app = express();
 app.use(express.json());
@@ -66,6 +66,10 @@ app.get("/api/stats", (req, res) => {
 
 app.get("/api/logs", (req, res) => {
   res.json(getRecentLogs(10));
+});
+
+app.get("/api/traffic", (req, res) => {
+  res.json(getTrafficSeries(15));
 });
 
 // --- Dynamic proxy ---

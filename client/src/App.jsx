@@ -7,32 +7,33 @@ import AddTargetForm from "./components/AddTargetForm.jsx";
 import { placeholderStats, placeholderTargets, placeholderLog, placeholderTraffic } from "./data/placeholder.js";
 import "./App.css";
 
-// Traffic chart still uses placeholder time-series data — historical
-// bucketing of real traffic over time is a later milestone (needs the
-// server to store timestamps in buckets, not just a rolling recent list).
 const POLL_INTERVAL_MS = 3000;
 
 export default function App() {
   const [stats, setStats] = useState(placeholderStats);
   const [targets, setTargets] = useState(placeholderTargets);
   const [log, setLog] = useState(placeholderLog);
+  const [traffic, setTraffic] = useState(placeholderTraffic);
   const [connected, setConnected] = useState(false);
 
   async function fetchLiveData() {
     try {
-      const [statsRes, targetsRes, logRes] = await Promise.all([
+      const [statsRes, targetsRes, logRes, trafficRes] = await Promise.all([
         fetch("/api/stats"),
         fetch("/api/targets"),
         fetch("/api/logs"),
+        fetch("/api/traffic"),
       ]);
-      const [statsData, targetsData, logData] = await Promise.all([
+      const [statsData, targetsData, logData, trafficData] = await Promise.all([
         statsRes.json(),
         targetsRes.json(),
         logRes.json(),
+        trafficRes.json(),
       ]);
       setStats(statsData);
       setTargets(targetsData);
       setLog(logData);
+      setTraffic(trafficData);
       setConnected(true);
     } catch (err) {
       setConnected(false);
@@ -101,7 +102,7 @@ export default function App() {
         </section>
 
         <section className="content-grid">
-          <TrafficChart data={placeholderTraffic} />
+          <TrafficChart data={traffic} />
           <div className="stack">
             <div className="panel">
               <h2 className="panel__title">Add a Target</h2>

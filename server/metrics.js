@@ -6,10 +6,16 @@
 const MAX_LOG_ENTRIES = 50;
 const requestLog = [];
 const targetStats = {}; // name -> { count, totalLatency, errorCount }
+const trafficBuckets = new Map(); // "HH:MM" -> request count for that minute
+
+function minuteKey(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
 
 export function recordRequest({ method, path, targetName, status, latencyMs }) {
+  const now = new Date();
   const entry = {
-    time: new Date().toLocaleTimeString(),
+    time: now.toLocaleTimeString(),
     method,
     path,
     target: targetName,
@@ -25,6 +31,23 @@ export function recordRequest({ method, path, targetName, status, latencyMs }) {
   t.count += 1;
   t.totalLatency += latencyMs;
   if (status >= 400) t.errorCount += 1;
+
+  const key = minuteKey(now);
+  trafficBuckets.set(key, (trafficBuckets.get(key) || 0) + 1);
+}
+
+// Returns the last `minutes` worth of per-minute request counts, filling
+// in zeros for minutes with no traffic, so the chart always shows a
+// continuous timeline rather than gaps.
+export function getTrafficSeries(minutes = 15) {
+  const now = new Date();
+  const series = [];
+  for (let i = minutes - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 60_000);
+    const key = minuteKey(d);
+    series.push({ time: key, requests: trafficBuckets.get(key) || 0 });
+  }
+  return series;
 }
 
 export function getRecentLogs(limit = 10) {
