@@ -3,7 +3,7 @@ import { useState } from "react";
 export default function AddTargetForm({ onAdd }) {
   const [name, setName] = useState("");
   const [pathPrefix, setPathPrefix] = useState("");
-  const [url, setUrl] = useState("");
+  const [instancesInput, setInstancesInput] = useState("");
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -12,10 +12,17 @@ export default function AddTargetForm({ onAdd }) {
     setError(null);
     setSubmitting(true);
     try {
-      await onAdd({ name, pathPrefix, url });
+      const instances = instancesInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (instances.length === 0) {
+        throw new Error("Enter at least one instance URL");
+      }
+      await onAdd({ name, pathPrefix, instances });
       setName("");
       setPathPrefix("");
-      setUrl("");
+      setInstancesInput("");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -41,9 +48,9 @@ export default function AddTargetForm({ onAdd }) {
       />
       <input
         className="input"
-        placeholder="Target URL (e.g. http://localhost:4003)"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
+        placeholder="Instance URLs, comma-separated (e.g. http://localhost:4003, http://localhost:4004)"
+        value={instancesInput}
+        onChange={(e) => setInstancesInput(e.target.value)}
         required
       />
       <button className="btn-primary" type="submit" disabled={submitting}>

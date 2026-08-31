@@ -26,25 +26,25 @@ app.get("/health", (req, res) => {
 
 app.get("/api/targets", (req, res) => {
   res.json(
-    getTargets().map(({ name, pathPrefix, url }) => ({
+    getTargets().map(({ name, pathPrefix, instances }) => ({
       name,
       pathPrefix,
-      url,
+      instances,
       ...getStatsForTarget(name),
     }))
   );
 });
 
 app.post("/api/targets", (req, res) => {
-  const { name, pathPrefix, url } = req.body || {};
-  if (!name || !pathPrefix || !url) {
-    return res.status(400).json({ error: "name, pathPrefix, and url are all required" });
+  const { name, pathPrefix, instances } = req.body || {};
+  if (!name || !pathPrefix || !Array.isArray(instances) || instances.length === 0) {
+    return res.status(400).json({ error: "name, pathPrefix, and at least one instance URL are required" });
   }
   if (!pathPrefix.startsWith("/")) {
     return res.status(400).json({ error: "pathPrefix must start with /" });
   }
   try {
-    const updated = addTarget({ name, pathPrefix, url });
+    const updated = addTarget({ name, pathPrefix, instances });
     res.status(201).json(updated);
   } catch (err) {
     res.status(409).json({ error: err.message });
@@ -80,9 +80,19 @@ app.use(dynamicProxyMiddleware);
 app.listen(PORT, () => {
   console.log(`\nWaypost gateway running on http://localhost:${PORT}`);
   console.log("Registered routes:");
-  getTargets().forEach((t) => console.log(`  ${t.pathPrefix} -> ${t.name} (${t.url})`));
+  getTargets().forEach((t) => console.log(`  ${t.pathPrefix} -> ${t.name} (${t.instances.join(", ")})`));
   console.log("");
 });
+
+// Diagnostic: log exactly why/how the process ever exits, since we've
+// seen it disappear with zero output in the past. This will tell us
+// whether it's an uncaught exception, an external signal (e.g. killed
+// by another program), or something else entirely.
+process.on("SIGTERM", () => console.log("[waypost] received SIGTERM"));
+process.on("SIGINT", () => console.log("[waypost] received SIGINT"));
+process.on("uncaughtException", (err) => console.log("[waypost] uncaughtException:", err));
+process.on("unhandledRejection", (err) => console.log("[waypost] unhandledRejection:", err));
+process.on("exit", (code) => console.log(`[waypost] process exiting with code ${code}`));
 
 // Spin up fake backend services locally so this is provable end-to-end
 // without needing real external services. In a real deployment, these

@@ -1,28 +1,44 @@
-// proxyRouter.js — replaces the old startup-time proxy registration.
-// Targets can now be added/removed at runtime, so instead of wiring up
-// one fixed middleware per target when the server boots, we look up the
-// matching target fresh on every incoming request and reuse (or create)
-// a cached proxy instance for it.
+// proxyRouter.js — looks up the target dynamically per request, and now
+// also picks WHICH instance of that target should handle the request,
+// rotating through them round-robin.
 
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { getTargets } from "./targetsStore.js";
 import { recordRequest } from "./metrics.js";
 
-const proxyCache = new Map(); // target name -> { pathPrefix, url, middleware }
+const proxyCache = new Map(); // target name -> { instancesKey, middleware }
+const robinIndex = new Map(); // target name -> next instance index to use
+
+// Picks the next instance for a target in round-robin order and
+// advances the counter for next time.
+function pickInstance(target) {
+  const i = robinIndex.get(target.name) || 0;
+  const instance = target.instances[i % target.instances.length];
+  robinIndex.set(target.name, i + 1);
+  return instance;
+}
 
 function getOrCreateProxy(target) {
+  const instancesKey = target.instances.join(",");
   const cached = proxyCache.get(target.name);
-  if (cached && cached.pathPrefix === target.pathPrefix && cached.url === target.url) {
+  if (cached && cached.instancesKey === instancesKey) {
     return cached.middleware;
   }
 
   const middleware = createProxyMiddleware({
-    target: target.url,
+    // `router` is called fresh for every incoming request, which is what
+    // lets us pick a different instance each time instead of always
+    // hitting the same fixed target.
+    router: (req) => {
+      const instance = pickInstance(target);
+      req._chosenInstance = instance;
+      return instance;
+    },
     changeOrigin: true,
     pathRewrite: { [`^${target.pathPrefix}`]: "" },
     on: {
       proxyReq: (proxyReq, req) => {
-        console.log(`[waypost] ${req.method} ${req.originalUrl} -> ${target.name} (${target.url})`);
+        console.log(`[waypost] ${req.method} ${req.originalUrl} -> ${target.name} (${req._chosenInstance || "?"})`);
       },
       proxyRes: (proxyRes, req) => {
         const latencyMs = Date.now() - req._startTime;
@@ -49,15 +65,13 @@ function getOrCreateProxy(target) {
     },
   });
 
-  proxyCache.set(target.name, { pathPrefix: target.pathPrefix, url: target.url, middleware });
+  proxyCache.set(target.name, { instancesKey, middleware });
   return middleware;
 }
 
 function findMatchingTarget(requestPath) {
   const matches = getTargets().filter((t) => requestPath.startsWith(t.pathPrefix));
   if (matches.length === 0) return null;
-  // Longest prefix wins, so a more specific route beats a broader one
-  // if two targets' prefixes ever overlap.
   return matches.reduce((longest, t) => (t.pathPrefix.length > longest.pathPrefix.length ? t : longest));
 }
 

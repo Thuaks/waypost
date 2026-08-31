@@ -1,6 +1,7 @@
-// targetsStore.js — the routing table, now dynamic and persisted to disk.
-// Replaces the old static targets.js array. On first run, seeds itself
-// with the same two default targets we started with.
+// targetsStore.js — the routing table, persisted to disk.
+// Each target now holds an array of `instances` (URLs) instead of a
+// single `url`, so the proxy can round-robin across multiple copies
+// of the same backend service.
 
 import fs from "fs";
 import path from "path";
@@ -10,12 +11,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.join(__dirname, "targets.json");
 
 const DEFAULT_TARGETS = [
-  { name: "users-service", pathPrefix: "/api/users", url: "http://localhost:4001" },
-  { name: "orders-service", pathPrefix: "/api/orders", url: "http://localhost:4002" },
+  { name: "users-service", pathPrefix: "/api/users", instances: ["http://localhost:4001", "http://localhost:4006"] },
+  { name: "orders-service", pathPrefix: "/api/orders", instances: ["http://localhost:4002"] },
 ];
 
 function save(targets) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(targets, null, 2));
+}
+
+// Migrates any older-format entries (single `url` field) to the new
+// `instances` array shape, so a targets.json from before this milestone
+// still loads correctly instead of breaking.
+function migrate(rawTargets) {
+  return rawTargets.map((t) => {
+    if (t.instances) return t;
+    return { name: t.name, pathPrefix: t.pathPrefix, instances: [t.url] };
+  });
 }
 
 function load() {
@@ -23,7 +34,10 @@ function load() {
     save(DEFAULT_TARGETS);
     return [...DEFAULT_TARGETS];
   }
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+  const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+  const migrated = migrate(raw);
+  save(migrated); // persist the migrated shape so this only happens once
+  return migrated;
 }
 
 let targets = load();
@@ -32,14 +46,17 @@ export function getTargets() {
   return targets;
 }
 
-export function addTarget({ name, pathPrefix, url }) {
+export function addTarget({ name, pathPrefix, instances }) {
   if (targets.some((t) => t.name === name)) {
     throw new Error(`A target named "${name}" already exists`);
   }
   if (targets.some((t) => t.pathPrefix === pathPrefix)) {
     throw new Error(`Path prefix "${pathPrefix}" is already in use`);
   }
-  targets = [...targets, { name, pathPrefix, url }];
+  if (!Array.isArray(instances) || instances.length === 0) {
+    throw new Error("At least one instance URL is required");
+  }
+  targets = [...targets, { name, pathPrefix, instances }];
   save(targets);
   return targets;
 }

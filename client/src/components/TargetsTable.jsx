@@ -13,8 +13,9 @@ export default function TargetsTable({ targets, onRemove }) {
           <tr>
             <th>Name</th>
             <th>Path</th>
+            <th>Instances</th>
             <th>Status</th>
-            <th className="numeric">Latency</th>
+            <th className="numeric">Avg Latency</th>
             <th></th>
           </tr>
         </thead>
@@ -23,6 +24,13 @@ export default function TargetsTable({ targets, onRemove }) {
             <tr key={t.name}>
               <td>{t.name}</td>
               <td className="mono-ish">{t.pathPrefix}</td>
+              <td className="mono-ish">
+                {t.instances.length > 1 ? (
+                  <span title={t.instances.join(", ")}>{t.instances.length} (round-robin)</span>
+                ) : (
+                  t.instances[0]
+                )}
+              </td>
               <td>
                 <span className="status-dot" style={{ background: statusColor[t.status] }} />
                 {t.status}
