@@ -20,15 +20,17 @@ export default function TargetsTable({ targets, onRemove }) {
           </tr>
         </thead>
         <tbody>
-          {targets.map((t) => (
+          {targets.map((t) => {
+            const instances = t.instances || [];
+            return (
             <tr key={t.name}>
               <td>{t.name}</td>
               <td className="mono-ish">{t.pathPrefix}</td>
               <td className="mono-ish">
-                {t.instances.length > 1 ? (
-                  <span title={t.instances.join(", ")}>{t.instances.length} (round-robin)</span>
+                {instances.length > 1 ? (
+                  <span title={instances.join(", ")}>{instances.length} (round-robin)</span>
                 ) : (
-                  t.instances[0]
+                  instances[0] || "—"
                 )}
               </td>
               <td>
@@ -42,7 +44,8 @@ export default function TargetsTable({ targets, onRemove }) {
                 </button>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

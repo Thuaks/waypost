@@ -2,8 +2,20 @@
 // before wiring it up to the real server in the next milestone.
 
 export const placeholderTargets = [
-  { name: "users-service", pathPrefix: "/api/users", status: "healthy", latencyMs: 42 },
-  { name: "orders-service", pathPrefix: "/api/orders", status: "healthy", latencyMs: 58 },
+  {
+    name: "users-service",
+    pathPrefix: "/api/users",
+    instances: ["http://localhost:4001", "http://localhost:4006"],
+    status: "healthy",
+    latencyMs: 42,
+  },
+  {
+    name: "orders-service",
+    pathPrefix: "/api/orders",
+    instances: ["http://localhost:4002"],
+    status: "healthy",
+    latencyMs: 58,
+  },
 ];
 
 export const placeholderStats = {
