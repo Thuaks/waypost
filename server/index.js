@@ -39,13 +39,51 @@ app.get("/api/targets", (req, res) => {
   );
 });
 
+// A public deployment must not become an open proxy: anyone who can reach
+// the dashboard can add targets, so by default only localhost targets are
+// accepted. Set ALLOW_EXTERNAL_TARGETS=true to allow any host (for example
+// on a private network you control).
+const ALLOW_EXTERNAL = process.env.ALLOW_EXTERNAL_TARGETS === "true";
+const MAX_TARGETS = 20;
+const MAX_INSTANCES = 10;
+
+function validateInstances(instances) {
+  if (instances.length > MAX_INSTANCES) {
+    return `At most ${MAX_INSTANCES} instances per target`;
+  }
+  for (const raw of instances) {
+    if (typeof raw !== "string") return "Instance URLs must be strings";
+    let u;
+    try {
+      u = new URL(raw);
+    } catch {
+      return `"${raw}" is not a valid URL`;
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return `"${raw}" must start with http:// or https://`;
+    }
+    if (!ALLOW_EXTERNAL && !["localhost", "127.0.0.1"].includes(u.hostname)) {
+      return `Only localhost targets are allowed on this deployment ("${u.hostname}" rejected)`;
+    }
+  }
+  return null;
+}
+
 app.post("/api/targets", (req, res) => {
   const { name, pathPrefix, instances } = req.body || {};
   if (!name || !pathPrefix || !Array.isArray(instances) || instances.length === 0) {
     return res.status(400).json({ error: "name, pathPrefix, and at least one instance URL are required" });
   }
-  if (!pathPrefix.startsWith("/")) {
-    return res.status(400).json({ error: "pathPrefix must start with /" });
+  // Must live under /api/ so a target can never capture "/" and hijack the dashboard.
+  if (typeof pathPrefix !== "string" || !pathPrefix.startsWith("/api/") || pathPrefix.length <= 5) {
+    return res.status(400).json({ error: "pathPrefix must start with /api/ (e.g. /api/payments)" });
+  }
+  if (getTargets().length >= MAX_TARGETS) {
+    return res.status(400).json({ error: `At most ${MAX_TARGETS} targets are allowed` });
+  }
+  const problem = validateInstances(instances);
+  if (problem) {
+    return res.status(400).json({ error: problem });
   }
   try {
     const updated = addTarget({ name, pathPrefix, instances });
