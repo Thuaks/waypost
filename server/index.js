@@ -1,9 +1,13 @@
 import express from "express";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import { dynamicProxyMiddleware } from "./proxyRouter.js";
 import { getTargets, addTarget, removeTarget } from "./targetsStore.js";
 import { startMockServices } from "./mockServices.js";
 import { recordRequest, getRecentLogs, getOverallStats, getStatsForTarget, getTrafficSeries } from "./metrics.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 4000;
@@ -76,6 +80,20 @@ app.get("/api/traffic", (req, res) => {
 // Handles everything else by checking the current target list on every
 // request, so add/remove takes effect immediately without a restart.
 app.use(dynamicProxyMiddleware);
+
+// --- Serve the built dashboard (production only) ---
+// Locally, the dashboard runs separately via Vite (npm run dev, port 5173),
+// so client/dist won't exist and this block simply does nothing. In
+// production (Render), the build step creates client/dist, and this lets
+// one Express server serve both the API and the dashboard from one URL.
+const clientDist = path.join(__dirname, "../client/dist");
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+  console.log("[waypost] serving built dashboard from client/dist");
+}
 
 app.listen(PORT, () => {
   console.log(`\nWaypost gateway running on http://localhost:${PORT}`);
