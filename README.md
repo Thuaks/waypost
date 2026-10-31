@@ -3,7 +3,7 @@
 A self-hosted reverse proxy / API gateway with a live monitoring dashboard, built to
 demonstrate networking and systems-design skills.
 
-**Live demo:** _(add your Render URL here once deployed)_
+**Live demo:** https://waypost-4kyg.onrender.com
 
 ## What it does
 
